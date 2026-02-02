@@ -25,21 +25,23 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-  /* Base URL to use in actions like `await page.goto('')`. */
-  baseURL: 'https://www.google.com',
-
-  /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-  trace: 'on-first-retry',
-},
+    /* Base URL to use in actions like `await page.goto('')`. */
+    baseURL: 'https://s1.yahshuahris.com/',
 
 
   /* Configure projects for major browsers */
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          slowMo: 600 // <-- slows down each action by 400ms
+        }
+      },
     },
 
+    
     // {
     //   name: 'firefox',
     //   use: { ...devices['Desktop Firefox'] },
@@ -78,3 +80,5 @@ export default defineConfig({
   //   reuseExistingServer: !process.env.CI,
   // },
 });
+
+

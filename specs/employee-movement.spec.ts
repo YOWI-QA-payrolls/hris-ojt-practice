@@ -1,70 +1,124 @@
 import { test, expect } from '@playwright/test';
 import { login } from '../pages/login-josh';
-import { createPMF } from '../utils/helpers/pmf.helper';
+import { goToEmployeeMovement } from '../pages/employeeMovement.page';
+import {
+  expectTableHasRows,
+  expectEmployeeInFirstRow,
+  verifyDateResults
+} from '../assertions/employeeMovement.assert';
+import {
+  searchEmployee,
+  resetSearch,
+  createPMF,
+  createPMFmissing,
+  filterByDate,
+  approvePMF
+} from '../utils/helpers/employeeMovement.helper';
 
-test('Employee Movement Full Module Flow', async ({ page }) => {
-  // LOGIN
-  await login(page);
+// ==============================
+// SHARED SETUP (CREATOR ONLY)
+// ==============================
+test.describe('Employee Movement - Creator Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page);
 
-  // NAVIGATE
-  await page.waitForTimeout(8000);
-  await page.click('text=Manage');
-  await page.click('text=Employee Movement');
-  await expect(page).toHaveURL(/.*employee-movement/);
+    await page
+      .getByRole('button', { name: 'Open user menu profile logo' })
+      .waitFor({ state: 'visible' });
 
-  // INITIAL CHECK (TC-EM-001 & TC-EM-002)
-  const rows = page.locator('table tbody tr');
-  const countText = await page.locator('text=Total Record/s:').textContent();
-  expect(await rows.count()).toBeGreaterThan(0);
+    await goToEmployeeMovement(page);
+  });
 
-  
-  // SEARCH (TC-EM-003)
-  const searchInput = page.locator('input[placeholder="Search ..."]');
-  await searchInput.fill('Sage Rutledge');
-  await page.keyboard.press('Enter');
-   await page.waitForTimeout(4000);
-  await expect(page.locator('table tbody tr').first().locator('td').nth(2)).toHaveText('Sage Rutledge');
+  test('TC-EM-001 | Display employee movement records', async ({ page }) => {
+    await expectTableHasRows(page);
+    await expectEmployeeInFirstRow(page);
+  });
 
-  // RESET SEARCH
-  await searchInput.fill('');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
+  test('TC-EM-002 | Search employee and reset search', async ({ page }) => {
+    await searchEmployee(page, 'Allen Alexander');
+    await resetSearch(page);
+    await expectTableHasRows(page);
+  });
 
-  // DATE RANGE FILTER (TC-EM-004)
-  await page.click('button:has-text("1")').catch(() => {});
-  await page.waitForTimeout(500);
+  test('TC-EM-004 | Filter employee movement by date range', async ({ page }) => {
+    await filterByDate(page, '01/15/2026', '01/25/2026');
+    await verifyDateResults(page, '');
+  });
 
-  await page.locator('input[placeholder="mm/dd/yyyy"]').first().fill('01/20/2026');
-  await page.locator('input[placeholder="mm/dd/yyyy"]').nth(1).fill('01/20/2026');
-  await page.getByRole('button').nth(4).click();
-  await page.waitForTimeout(1000);
+  test('TC-EM-005 | Pagination works correctly', async ({ page }) => {
+    await page.getByRole('button', { name: 'Page 2' }).click();
+    await page.getByRole('button', { name: 'Page 3' }).click();
+    await page.getByRole('button', { name: 'Page 4' }).click();
+    await page.getByRole('button', { name: 'Page 1' }).click();
 
-  await expect(page.getByRole('cell', { name: '/20/2026' }).first()).toBeVisible();
+    await expect(page.locator('tbody tr').first()).toBeVisible();
+  });
+
+  test('TC-EM-006 | Change records per page', async ({ page }) => {
+    await page.locator('#role-desktop').selectOption('10');
+    await page.waitForTimeout(1000);
+
+    const rowCount = await page.locator('tbody tr').count();
+    expect(rowCount).toBeLessThanOrEqual(10);
+  });
+});
 
 
 
-  // PAGINATION (TC-EM-005)
-  await page.click('button:has-text("2")').catch(() => {});
-  await expect(page.locator('tbody tr').first()).toBeVisible();
+test('TC-EM-007 | Create PMF and approve using two browser contexts', async ({ browser }) => {
 
-  await page.click('button:has-text("1")').catch(() => {});
-  await expect(page.locator('tbody tr').first()).toBeVisible();
+  // creator
+  const creatorContext = await browser.newContext();
+  const creatorPage = await creatorContext.newPage();
 
-  // RECORDS PER PAGE (TC-EM-006)
-  await page.locator('#role-desktop').selectOption('10');
-  await page.waitForTimeout(1000);
+  await login(creatorPage);
+  await goToEmployeeMovement(creatorPage);
 
-  const rowCount = await page.locator('tbody tr').count();
-  expect(rowCount).toBeLessThanOrEqual(10);
-
-  // CREATE PMF (TC-EM-007, 008, 009)
-  await createPMF(page, {
-    employeeName: 'Clayton Pace • Admin | Sales',
+  await createPMF(creatorPage, {
+    employeeName: 'Allen Alexander • Admin | Software Engineer',
     positionValue: '128',
     employmentStatusValue: '102',
-    startDateOption: 'Choose Tuesday, January 20th,',
+    startDateOption: 'Choose Tuesday, February 3rd,',
     regularizationType: 'Early Regularization',
     salaryChangeOption: 'No changes',
   });
 
+  // arover
+  const approverContext = await browser.newContext();
+  const approverPage = await approverContext.newPage();
+
+  await approverPage.goto('https://s1.yahshuahris.com/login');
+
+  await approverPage.getByRole('textbox', { name: 'Email' })
+    .fill('joba.pagapong.coc+1@phinmaed.com');
+
+  await approverPage.getByRole('textbox', { name: 'Password' })
+    .fill('Ezeypagapong@777');
+
+  await approverPage.getByRole('button', { name: 'Sign in' }).click();
+
+  await approvePMF(approverPage);
+
+  // close
+  await creatorContext.close();
+  await approverContext.close();
+});
+
+
+test('TC-EM-008 | Create PMF with missing inputs', async ({ page }) => {
+  await login(page);
+  await goToEmployeeMovement(page);
+
+  await createPMFmissing(page, {
+    employeeName: '',
+    positionValue: '',
+    employmentStatusValue: '',
+    startDateOption: 'Choose Tuesday, January 20th,',
+    regularizationType: '',
+    salaryChangeOption: '',
+  });
+
+  await expect(
+    page.getByRole('heading', { name: 'You cannot proceed due to' })
+  ).toBeVisible();
 });
